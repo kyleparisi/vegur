@@ -1189,8 +1189,7 @@ passthrough_early_0length(Config) ->
     ct:pal("RecvServ: ~p~nRecvClient: ~p",[RecvServ,RecvClient]),
     %% Detected the bad request early on and responded before the server could
     {match, _} = re:run(RecvServ, "3\r\nabc\r\n$"),
-    {match, _} = re:run(RecvClient, "400 Bad Request"),
-    wait_for_closed(Server, 500).
+    {match, _} = re:run(RecvClient, "400 Bad Request").
 
 passthrough_partial_early_0length1(Config) ->
     %% Chunked data can move through the stack without being modified.
@@ -1355,7 +1354,8 @@ interrupted_server(Config) ->
     %% Note that on a loopback interface, this should always pass. Remote
     %% interfaces detect and propagate connection termination differently.
     ?assert(timer:seconds(2) > timer:now_diff(CloseDetect,CloseTime)/1000),
-    check_stub_error({downstream, closed}).
+    %% OTP-21 may return enotconn as an error after being closed once.
+    check_stub_errors([{downstream, closed}, {downstream, enotconn}]).
 
 bad_chunk(Config) ->
     %% A bad chunk from the server cannot be reported on via error codes
@@ -3169,3 +3169,10 @@ check_stub_error(Pattern) ->
     ct:pal("Local: ~p~n", [Local]),
     Pattern = hd(lists:last(Local)).
 
+check_stub_errors(Patterns) ->
+    Local = [Args || {_, {vegur_stub, error_page, Args}, _Ret} <- meck:history(vegur_stub)],
+    Pattern = hd(lists:last(Local)),
+    case lists:member(Pattern, Patterns) of
+        true -> ok;
+        false -> error({Pattern, Patterns})
+    end.
